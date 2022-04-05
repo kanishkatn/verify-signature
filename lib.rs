@@ -23,9 +23,9 @@ mod verify_signature {
             ink_env::hash_encoded::<ink_env::hash::Sha2x256, _>(&encodable, &mut message);
 
             let mut output = [0; 33];
-            ink_env::ecdsa_recover(&signature, &message, &mut output);
+            ink_env::ecdsa_recover(&signature, &message, &mut output).expect("recover failed");
             let pub_key = eth::ECDSAPublicKey::from(output);
-            let signature_account_id = AccountId::from(pub_key.to_default_account_id());
+            let signature_account_id = pub_key.to_default_account_id();
             
             assert!(self.signer == signature_account_id, "invalid signature");
         }
@@ -61,7 +61,9 @@ mod verify_signature {
             let mut message = <ink_env::hash::Sha2x256 as ink_env::hash::HashOutput>::Type::default(); // 256-bit buffer
             ink_env::hash_encoded::<ink_env::hash::Sha2x256, _>(&encodable, &mut message);
 
-            let seed = hex_literal::hex!("e5be9a5092b81bca64be81d212e7f2f9eba183bb7a90954f7b76361f6edb5c0a");
+            // Use Alice's seed
+            // subkey inspect //Alice --scheme Ecdsa
+            let seed = hex_literal::hex!("cb6df9de1efca7a3998a8ead4e02159d5fa99c3e0d4fd6432667390bb4726854");
             let pair = sp_core::ecdsa::Pair::from_seed(&seed);
             let signature = pair.sign(&message).encode();
             let formatted : [u8; 65] = signature[..].try_into().expect("slice with incorrect length");
@@ -75,9 +77,40 @@ mod verify_signature {
             let verify_signature = VerifySignature::new();
 
             let contract_id = contract_id();
+
+            set_next_caller(accounts.alice);
             let signature = sign(contract_id, 100);
 
             verify_signature.verify_signature(100, signature);
+        }
+
+        #[ink::test]
+        fn test_signature() {
+            let accounts = default_accounts();
+
+            // Use Charlie's seed
+            // subkey inspect //Charlie --scheme Ecdsa
+            let encodable = ("0x6672035dd6010e55e08eb707d171b5ec790bfea44f93ea8b1d22503033de45cd", 500);
+            let mut message = <ink_env::hash::Sha2x256 as ink_env::hash::HashOutput>::Type::default(); // 256-bit buffer
+            ink_env::hash_encoded::<ink_env::hash::Sha2x256, _>(&encodable, &mut message);
+
+            let seed = hex_literal::hex!("79c3b7fc0b7697b9414cb87adcb37317d1cab32818ae18c0e97ad76395d1fdcf");
+            let pair = sp_core::ecdsa::Pair::from_seed(&seed);
+            let signature = pair.sign(&message).encode();
+            let formatted : [u8; 65] = signature[..].try_into().expect("slice with incorrect length");
+
+            // assert_eq!(sp_core::ecdsa::Pair::verify(&signature, message, &pair.public()), true);
+
+            let mut output = [0; 33];
+            ink_env::ecdsa_recover(&formatted, &message, &mut output).expect("recover");
+            let pub_key = eth::ECDSAPublicKey::from(output);
+            let signature_account_id = pub_key.to_default_account_id();
+
+            ink_env::debug_println!("{:?}", signature_account_id);
+            ink_env::debug_println!("{:?}", accounts.charlie);
+            
+            assert!(accounts.charlie == AccountId::from(signature_account_id), "invalid signature");
+            
         }
     }
 }
